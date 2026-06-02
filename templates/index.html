@@ -1,0 +1,1773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WAFT-Stereo Depth Engine</title>
+    <!-- Google Fonts: Outfit (headings) & Plus Jakarta Sans (body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Three.js & OrbitControls for 3D Point Cloud Spatial View -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --text-primary: #ffffff;
+            --text-secondary: #8e8e93;
+            --accent-purple: #8b5cf6;
+            --accent-teal: #14b8a6;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --card-bg-outer: rgba(255, 255, 255, 0.02);
+            --card-bg-inner: rgba(10, 10, 10, 0.85);
+            --transition-curve: cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Ambient Glowing Background Orbs */
+        .mesh-gradient {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(150px);
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0.35;
+        }
+        .bg-orb-1 {
+            width: 700px;
+            height: 700px;
+            background: radial-gradient(circle, var(--accent-purple) 0%, rgba(139, 92, 246, 0.0) 70%);
+            top: -250px;
+            left: -200px;
+        }
+        .bg-orb-2 {
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--accent-teal) 0%, rgba(20, 184, 166, 0.0) 70%);
+            bottom: -150px;
+            right: -150px;
+        }
+
+        /* Typography */
+        h1, h2, h3 {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        /* Layout Container */
+        .container {
+            max-width: 1300px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 96px 24px;
+            z-index: 10;
+            position: relative;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 56px;
+        }
+
+        /* Badges */
+        .eyebrow {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.25em;
+            font-weight: 700;
+            color: var(--accent-purple);
+            background: rgba(139, 92, 246, 0.08);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            padding: 8px 16px;
+            border-radius: 50px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+
+        /* Header / Hero */
+        .hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .hero h1 {
+            font-size: clamp(2.8rem, 6vw, 4.5rem);
+            line-height: 1.05;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #ffffff 0%, #8e8e93 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+        }
+        .hero p {
+            color: var(--text-secondary);
+            font-size: clamp(1.05rem, 2vw, 1.3rem);
+            line-height: 1.6;
+            font-weight: 300;
+            max-width: 720px;
+        }
+
+        /* Bento Grid */
+        .bento-grid {
+            display: grid;
+            grid-template-columns: 4.5fr 7.5fr;
+            gap: 36px;
+        }
+
+        @media (max-width: 992px) {
+            .bento-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Double-Bezel Card Architecture (Machined Hardware aesthetic) */
+        .outer-shell {
+            background: var(--card-bg-outer);
+            border: 1px solid var(--border-color);
+            padding: 8px;
+            border-radius: 32px;
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            transition: all 0.6s var(--transition-curve);
+        }
+
+        .inner-core {
+            background: var(--card-bg-inner);
+            border-radius: calc(32px - 8px);
+            box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.05);
+            padding: 36px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 28px;
+        }
+
+        /* Input Upload Areas */
+        .upload-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        .upload-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .upload-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .drop-zone {
+            border: 1px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 32px 20px;
+            text-align: center;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.01);
+            transition: all 0.5s var(--transition-curve);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            min-height: 160px;
+        }
+        .drop-zone:hover {
+            border-color: var(--accent-purple);
+            background: rgba(139, 92, 246, 0.02);
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.05);
+        }
+        .drop-zone.dragover {
+            border-color: var(--accent-teal);
+            background: rgba(20, 184, 166, 0.04);
+        }
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+        .drop-zone svg {
+            width: 36px;
+            height: 36px;
+            stroke: var(--text-secondary);
+            transition: all 0.5s var(--transition-curve);
+            stroke-width: 1.5;
+            fill: none;
+        }
+        .drop-zone:hover svg {
+            stroke: var(--accent-purple);
+            transform: scale(1.08);
+        }
+        .drop-zone p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 400;
+            line-height: 1.4;
+        }
+        .drop-zone .filename-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent-teal);
+            word-break: break-all;
+            display: none;
+            z-index: 10;
+        }
+        .drop-zone .preview-thumb {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 5;
+            border-radius: 15px;
+            opacity: 0.85;
+            transition: opacity 0.4s var(--transition-curve);
+        }
+        .drop-zone:hover .preview-thumb {
+            opacity: 0.95;
+        }
+
+        /* Custom CTA Button */
+        .cta-button {
+            background: linear-gradient(135deg, var(--accent-purple) 0%, #6d28d9 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 50px;
+            padding: 18px 36px;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            transition: all 0.6s var(--transition-curve);
+            width: 100%;
+            margin-top: 16px;
+            box-shadow: 0 4px 24px rgba(139, 92, 246, 0.25);
+            position: relative;
+        }
+        .cta-button:hover {
+            box-shadow: 0 8px 36px rgba(139, 92, 246, 0.45);
+            transform: translateY(-2px);
+        }
+        .cta-button:active {
+            transform: translateY(0) scale(0.98);
+        }
+        .cta-button:disabled {
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.3);
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .arrow-circle {
+            width: 26px;
+            height: 26px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.5s var(--transition-curve);
+        }
+        .cta-button:hover .arrow-circle {
+            transform: translate(3px, -3px) scale(1.08);
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* Results Panel Styles */
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .results-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        /* Tabs System */
+        .tabs {
+            display: flex;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 4px;
+            border-radius: 50px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .tab {
+            padding: 8px 18px;
+            border-radius: 50px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.4s var(--transition-curve);
+        }
+        .tab:hover {
+            color: #ffffff;
+        }
+        .tab.active {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        /* Display Box */
+        .display-area {
+            width: 100%;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            min-height: 480px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .placeholder-view {
+            text-align: center;
+            color: var(--text-secondary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+            padding: 48px;
+            max-width: 440px;
+        }
+        .placeholder-view svg {
+            width: 54px;
+            height: 54px;
+            stroke: rgba(255, 255, 255, 0.12);
+            stroke-width: 1.2;
+            fill: none;
+        }
+        .placeholder-view h3 {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .placeholder-view p {
+            font-size: 13px;
+            line-height: 1.5;
+            font-weight: 300;
+        }
+
+        /* Loader */
+        .loader-view {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            text-align: center;
+        }
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border: 2px solid rgba(139, 92, 246, 0.08);
+            border-top: 2px solid var(--accent-purple);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loader-view p {
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            color: var(--accent-purple);
+        }
+
+        /* Result Outputs */
+        .result-img-wrapper {
+            width: 100%;
+            height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .result-image {
+            max-width: 100%;
+            max-height: 550px;
+            object-fit: contain;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Comparison Slider */
+        .slider-container {
+            position: relative;
+            width: 100%;
+            max-height: 550px;
+            aspect-ratio: 4/3;
+            overflow: hidden;
+            display: none;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .slider-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .slider-before {
+            z-index: 2;
+            clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
+        }
+        .slider-after {
+            z-index: 1;
+        }
+        .slider-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 2px;
+            background: #ffffff;
+            z-index: 3;
+            cursor: ew-resize;
+            box-shadow: 0 0 12px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .slider-handle-button {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 2px solid var(--accent-purple);
+            box-shadow: 0 3px 14px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: ew-resize;
+            transition: transform 0.2s var(--transition-curve);
+        }
+        .slider-handle:hover .slider-handle-button {
+            transform: scale(1.1);
+        }
+        .slider-handle-button svg {
+            width: 18px;
+            height: 18px;
+            fill: var(--accent-purple);
+        }
+
+        /* Error Banner */
+        .error-banner {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 48px 24px;
+            color: rgba(255, 255, 255, 0.2);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            border-top: 1px solid rgba(255, 255, 255, 0.03);
+            margin-top: auto;
+        }
+    </style>
+</head>
+<body>
+    <!-- Ambient mesh glow -->
+    <div class="mesh-gradient bg-orb-1"></div>
+    <div class="mesh-gradient bg-orb-2"></div>
+
+    <div class="container">
+        <!-- Hero Section -->
+        <header class="hero">
+            <span class="eyebrow">WAFT-Stereo Inference Hub</span>
+            <h1>High-Fidelity Stereo Depth</h1>
+            <p>Compute highly accurate depth maps from stereo image pairs using the Warping-Alone Field Transform (WAFT) neural architecture, packed and optimized via ONNX Runtime.</p>
+        </header>
+
+        <!-- Main Bento Grid -->
+        <main class="bento-grid">
+            <!-- Left Side: Control Panel (Double-Bezel) -->
+            <div class="outer-shell">
+                <div class="inner-core">
+                    <h2 style="font-size: 20px; font-weight: 600;">Stereo Input</h2>
+                    <form id="inference-form" class="upload-row">
+                        <!-- Left Image Upload -->
+                        <div class="upload-group">
+                            <span class="upload-label">Left Image (L)</span>
+                            <div class="drop-zone" id="drop-zone-left">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor"/>
+                                </svg>
+                                <p>Drag and drop Left image here or <strong>browse</strong></p>
+                                <span class="filename-label"></span>
+                                <input type="file" id="file-left" name="left" accept="image/*" required>
+                            </div>
+                        </div>
+
+                        <!-- Right Image Upload -->
+                        <div class="upload-group">
+                            <span class="upload-label">Right Image (R)</span>
+                            <div class="drop-zone" id="drop-zone-right">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor"/>
+                                </svg>
+                                <p>Drag and drop Right image here or <strong>browse</strong></p>
+                                <span class="filename-label"></span>
+                                <input type="file" id="file-right" name="right" accept="image/*" required>
+                            </div>
+                        </div>
+
+                        <div class="error-banner" id="error-banner">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="12"></line>
+                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            </svg>
+                            <span id="error-msg"></span>
+                        </div>
+
+                        <button type="submit" class="cta-button" id="submit-btn" disabled>
+                            <span>Compute Depth Map</span>
+                            <div class="arrow-circle">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3">
+                                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                                </svg>
+                            </div>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right Side: Preview & Outputs (Double-Bezel) -->
+            <div class="outer-shell">
+                <div class="inner-core" style="gap: 20px;">
+                    <div class="results-header">
+                        <span class="results-title">Output Preview</span>
+                        <div class="tabs" id="tab-container" style="display: none;">
+                            <button class="tab active" data-target="depth">Depth Map</button>
+                            <button class="tab" data-target="concat">Concat View</button>
+                            <button class="tab" data-target="slider">Interactive Slider</button>
+                            <button class="tab" data-target="pointcloud">3D Point Cloud</button>
+                        </div>
+                    </div>
+
+                    <!-- Display Area -->
+                    <div class="display-area">
+                        <!-- Placeholder state -->
+                        <div class="placeholder-view" id="view-placeholder">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor"/>
+                                <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke="currentColor"/>
+                            </svg>
+                            <h3>Awaiting Stereo Pair</h3>
+                            <p>Upload a left and right image pair in the control panel and click "Compute Depth Map" to generate the depth field representation.</p>
+                        </div>
+
+                        <!-- Loading state -->
+                        <div class="loader-view" id="view-loader">
+                            <div class="spinner"></div>
+                            <p>Running Neural Depth Estimation...</p>
+                        </div>
+
+                        <!-- Results: Depth Map -->
+                        <div class="result-img-wrapper" id="view-depth">
+                            <img class="result-image" id="img-depth" src="" alt="Stereo Depth Map Output">
+                        </div>
+
+                        <!-- Results: Concat View -->
+                        <div class="result-img-wrapper" id="view-concat">
+                            <img class="result-image" id="img-concat" src="" alt="Left and Depth Concatenation">
+                        </div>
+
+                        <!-- Results: Interactive Compare Slider -->
+                        <div class="slider-container" id="view-slider">
+                            <img class="slider-img slider-after" id="slider-img-after" src="" alt="Depth map image background">
+                            <img class="slider-img slider-before" id="slider-img-before" src="" alt="Left image foreground overlay">
+                            <div class="slider-handle" id="slider-handle">
+                                <div class="slider-handle-button">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Results: 3D Point Cloud (Three.js WebGL GPU-displaced) -->
+                        <div class="result-img-wrapper" id="view-pointcloud" style="width: 100%; height: 100%; display: none; flex-direction: column; position: relative;">
+                            <div id="canvas-container" style="width: 100%; height: 550px; min-height: 550px; border-radius: 12px; overflow: hidden; position: relative;"></div>
+                            
+                            <!-- Control Overlay Panel (Glassmorphism) -->
+                            <div class="pc-controls" style="position: absolute; bottom: 24px; left: 24px; background: rgba(10, 10, 10, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 16px; z-index: 10; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; flex-direction: column; gap: 12px; width: 260px; max-height: 500px; overflow-y: auto; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); text-align: left;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
+                                    <span style="font-size: 13px; font-weight: 600; color: #ffffff;">Point Cloud Settings</span>
+                                    <button type="button" id="btn-reset-view" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #fff; font-size: 10px; padding: 4px 10px; cursor: pointer; transition: all 0.3s var(--transition-curve);">Reset</button>
+                                </div>
+                                
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <div style="font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                        <span>Point Size</span>
+                                        <span id="val-ptsize">2.00</span>
+                                    </div>
+                                    <input type="range" id="input-ptsize" min="0.05" max="8.0" step="0.05" value="2.00" style="width: 100%; accent-color: var(--accent-purple); height: 4px; border-radius: 2px; cursor: pointer;">
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <div style="font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                        <span>Depth Scale</span>
+                                        <span id="val-dscale">1.5</span>
+                                    </div>
+                                    <input type="range" id="input-dscale" min="0.1" max="5.0" step="0.1" value="1.5" style="width: 100%; accent-color: var(--accent-purple); height: 4px; border-radius: 2px; cursor: pointer;">
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <div style="font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                        <span>Depth Offset</span>
+                                        <span id="val-doffset">0.1</span>
+                                    </div>
+                                    <input type="range" id="input-doffset" min="-2.0" max="2.0" step="0.1" value="0.1" style="width: 100%; accent-color: var(--accent-purple); height: 4px; border-radius: 2px; cursor: pointer;">
+                                </div>
+
+                                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-secondary);">
+                                    <span>Projection Model</span>
+                                    <select id="select-projp" style="background: #111; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 11px; padding: 4px 6px; outline: none; cursor: pointer;">
+                                        <option value="0">Perspective (1/Z)</option>
+                                        <option value="1">Linear Depth</option>
+                                    </select>
+                                </div>
+
+                                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-secondary);">
+                                    <span>Color Mode</span>
+                                    <select id="select-color" style="background: #111; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 11px; padding: 4px 6px; outline: none; cursor: pointer;">
+                                        <option value="1">Left RGB Camera</option>
+                                        <option value="0">Depth Map Colormap</option>
+                                        <option value="2">Color by Object Cluster</option>
+                                    </select>
+                                </div>
+
+                                <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                                    <input type="checkbox" id="chk-auto-rotate" checked style="accent-color: var(--accent-teal); cursor: pointer; width: 14px; height: 14px;">
+                                    <label for="chk-auto-rotate" style="font-size: 11px; color: var(--text-secondary); cursor: pointer; user-select: none;">Auto-Orbit Rotation</label>
+                                </div>
+
+                                <!-- Plane Segmentation Section -->
+                                <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+                                    <span style="font-size: 11px; font-weight: 600; color: var(--accent-teal); text-transform: uppercase; letter-spacing: 0.05em;">Plane Segmentation & Clustering</span>
+                                    
+                                    <div style="display: flex; gap: 8px;">
+                                        <button type="button" id="btn-segment-plane" disabled style="flex: 1; background: rgba(20, 184, 166, 0.15); border: 1px solid rgba(20, 184, 166, 0.3); border-radius: 6px; color: #fff; font-size: 11px; padding: 6px; cursor: pointer; transition: all 0.3s var(--transition-curve);">Detect Plane & Objects</button>
+                                        <button type="button" id="btn-clear-seg" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 11px; padding: 6px 12px; cursor: pointer; transition: all 0.3s var(--transition-curve);">Clear</button>
+                                    </div>
+                                    
+                                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                                        <div style="font-size: 10px; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                            <span>Distance Tolerance</span>
+                                            <span id="val-seg-thresh">0.10</span>
+                                        </div>
+                                        <input type="range" id="input-seg-thresh" min="0.01" max="0.50" step="0.01" value="0.10" style="width: 100%; accent-color: var(--accent-teal); height: 4px; border-radius: 2px; cursor: pointer;">
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: var(--text-secondary);">
+                                        <span>Show Mode</span>
+                                        <select id="select-seg-mode" style="background: #111; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 10px; padding: 4px 6px; outline: none; cursor: pointer;">
+                                            <option value="0">Highlight Plane</option>
+                                            <option value="1">Extract Objects</option>
+                                            <option value="2">Extract Plane Only</option>
+                                        </select>
+                                    </div>
+
+                                    <div id="segment-view-row" style="display: none; align-items: center; justify-content: space-between; font-size: 10px; color: var(--text-secondary);">
+                                        <span>Focus View</span>
+                                        <select id="select-view-object" style="background: #111; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 10px; padding: 4px 6px; outline: none; cursor: pointer; width: 140px;">
+                                            <option value="-3">Show All Points</option>
+                                            <option value="-1">Show Plane Only</option>
+                                            <option value="-2">Show All Objects (No Plane)</option>
+                                        </select>
+                                    </div>
+
+                                    <div id="plane-info" style="font-size: 9px; color: var(--text-secondary); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 4px;">Awaiting depth map...</div>
+                                </div>
+
+                                <button type="button" id="btn-export-ply" class="cta-button" style="padding: 10px 14px; font-size: 12px; margin-top: 4px; border-radius: 8px; box-shadow: none; display: flex; justify-content: center; align-items: center; gap: 8px; width: 100%;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="stroke: #fff;">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                                    </svg>
+                                    <span style="color: #fff;">Export PLY Cloud</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <footer>
+        WAFT-Stereo Depth Engine &bull; Developed by MemorySlices &bull; ONNX Deployment Powered
+    </footer>
+
+    <!-- Interactive Logic Scripts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('inference-form');
+            const submitBtn = document.getElementById('submit-btn');
+            const errorBanner = document.getElementById('error-banner');
+            const errorMsg = document.getElementById('error-msg');
+
+            // File inputs and Drop Zones
+            const dropZones = {
+                left: {
+                    zone: document.getElementById('drop-zone-left'),
+                    input: document.getElementById('file-left')
+                },
+                right: {
+                    zone: document.getElementById('drop-zone-right'),
+                    input: document.getElementById('file-right')
+                }
+            };
+
+            // States views
+            // States views
+            const views = {
+                placeholder: document.getElementById('view-placeholder'),
+                loader: document.getElementById('view-loader'),
+                depth: document.getElementById('view-depth'),
+                concat: document.getElementById('view-concat'),
+                slider: document.getElementById('view-slider'),
+                pointcloud: document.getElementById('view-pointcloud'),
+                tabContainer: document.getElementById('tab-container')
+            };
+
+            const images = {
+                depth: document.getElementById('img-depth'),
+                concat: document.getElementById('img-concat'),
+                sliderBefore: document.getElementById('slider-img-before'),
+                sliderAfter: document.getElementById('slider-img-after')
+            };
+
+            const tabs = document.querySelectorAll('.tab');
+
+            // Setup drag-and-drop
+            Object.keys(dropZones).forEach(key => {
+                const { zone, input } = dropZones[key];
+                
+                zone.addEventListener('click', (e) => {
+                    if (e.target === input) return;
+                    input.click();
+                });
+
+                zone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    zone.classList.add('dragover');
+                });
+
+                zone.addEventListener('dragleave', () => {
+                    zone.classList.remove('dragover');
+                });
+
+                zone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    zone.classList.remove('dragover');
+                    if (e.dataTransfer.files.length) {
+                        input.files = e.dataTransfer.files;
+                        handleFileSelection(key, input.files[0]);
+                    }
+                });
+
+                input.addEventListener('change', () => {
+                    if (input.files.length) {
+                        handleFileSelection(key, input.files[0]);
+                    }
+                });
+            });
+
+            function handleFileSelection(key, file) {
+                const { zone } = dropZones[key];
+                const textLabel = zone.querySelector('p');
+                const svgLabel = zone.querySelector('svg');
+                const fileLabel = zone.querySelector('.filename-label');
+
+                // Read file to show preview
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    let preview = zone.querySelector('.preview-thumb');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.classList.add('preview-thumb');
+                        zone.appendChild(preview);
+                    }
+                    preview.src = e.target.result;
+                    textLabel.style.display = 'none';
+                    svgLabel.style.display = 'none';
+                    fileLabel.innerText = file.name;
+                    fileLabel.style.display = 'block';
+
+                    checkFormValidity();
+                };
+                reader.readAsDataURL(file);
+            }
+
+            function checkFormValidity() {
+                const leftSelected = dropZones.left.input.files.length > 0;
+                const rightSelected = dropZones.right.input.files.length > 0;
+                submitBtn.disabled = !(leftSelected && rightSelected);
+            }
+
+            // Three.js variables
+            let scene, camera, renderer, controls;
+            let pointCloudMesh = null;
+            let isPointCloudInitialized = false;
+            let animationFrameId = null;
+            let isThreeJSRunning = false;
+            let currentRawDepth = "";
+            let currentLeftImage = "";
+            
+            const textureLoader = new THREE.TextureLoader();
+
+            function initThreeJS() {
+                const container = document.getElementById('canvas-container');
+                if (!container) return;
+
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x050505);
+
+                camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.05, 50);
+                camera.position.set(0, 0, 2.5);
+
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                container.appendChild(renderer.domElement);
+
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.maxDistance = 15;
+                controls.minDistance = 0.1;
+                
+                const gridHelper = new THREE.GridHelper(10, 50, 0x222222, 0x111111);
+                gridHelper.position.y = -1.5;
+                scene.add(gridHelper);
+
+
+
+                const material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        depthTexture: { value: null },
+                        colorTexture: { value: null },
+                        depthScale: { value: parseFloat(document.getElementById('input-dscale').value) },
+                        depthOffset: { value: parseFloat(document.getElementById('input-doffset').value) },
+                        pointSize: { value: parseFloat(document.getElementById('input-ptsize').value) },
+                        useColorTexture: { value: parseFloat(document.getElementById('select-color').value) },
+                        dispType: { value: parseInt(document.getElementById('select-projp').value) },
+                        aspectRatio: { value: container.clientWidth / container.clientHeight },
+                        planeEquation: { value: new THREE.Vector4(0, 0, 0, 0) },
+                        planeThreshold: { value: 0.1 },
+                        segmentationEnabled: { value: 0.0 },
+                        segmentationMode: { value: 0.0 },
+                        selectedClusterId: { value: -3.0 }
+                    },
+                    vertexShader: `
+                        attribute float clusterId;
+                        
+                        uniform sampler2D depthTexture;
+                        uniform float depthScale;
+                        uniform float depthOffset;
+                        uniform float pointSize;
+                        uniform int dispType;
+                        uniform float aspectRatio;
+                        
+                        varying vec2 vUv;
+                        varying float vDepth;
+                        varying vec3 vWorldPos;
+                        varying float vClusterId;
+                        
+                        void main() {
+                            vUv = uv;
+                            vClusterId = clusterId;
+                            float rawDepth = texture2D(depthTexture, uv).r;
+                            vDepth = rawDepth;
+                            
+                            float z;
+                            if (dispType == 0) {
+                                z = depthScale / (rawDepth + 0.01) + depthOffset;
+                            } else {
+                                z = rawDepth * depthScale + depthOffset;
+                            }
+                            
+                            float x = (uv.x - 0.5) * z * aspectRatio;
+                            float y = (uv.y - 0.5) * z;
+                            
+                            vWorldPos = vec3(x, y, -z);
+                            
+                            vec4 mvPosition = modelViewMatrix * vec4(x, y, -z, 1.0);
+                            gl_Position = projectionMatrix * mvPosition;
+                            
+                            gl_PointSize = pointSize * (300.0 / -mvPosition.z);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform sampler2D colorTexture;
+                        uniform float useColorTexture;
+                        
+                        uniform vec4 planeEquation;
+                        uniform float planeThreshold;
+                        uniform float segmentationEnabled;
+                        uniform float segmentationMode;
+                        uniform float selectedClusterId;
+                        
+                        varying vec2 vUv;
+                        varying float vDepth;
+                        varying vec3 vWorldPos;
+                        varying float vClusterId;
+                        
+                        vec3 getTurboColormap(float val) {
+                            vec4 c0 = vec4(0.135954, 0.219104, 0.579220, 1.0);
+                            vec4 c1 = vec4(0.041563, 0.540198, 0.957974, 1.0);
+                            vec4 c2 = vec4(0.124777, 0.877042, 0.785005, 1.0);
+                            vec4 c3 = vec4(0.654305, 0.987305, 0.398155, 1.0);
+                            vec4 c4 = vec4(0.965005, 0.707665, 0.179833, 1.0);
+                            vec4 c5 = vec4(0.906146, 0.182936, 0.196288, 1.0);
+                            
+                            float x = clamp(val, 0.0, 1.0);
+                            return c0.rgb + x * (c1.rgb - c0.rgb + x * (c2.rgb - c1.rgb + x * (c3.rgb - c2.rgb + x * (c4.rgb - c3.rgb + x * (c5.rgb - c4.rgb)))));
+                        }
+                        
+                        vec3 getClusterColor(float id) {
+                            int cid = int(mod(id, 8.0));
+                            if (cid == 0) return vec3(0.95, 0.15, 0.15); // Red
+                            if (cid == 1) return vec3(0.15, 0.85, 0.25); // Green
+                            if (cid == 2) return vec3(0.15, 0.45, 0.95); // Blue
+                            if (cid == 3) return vec3(0.95, 0.85, 0.15); // Yellow
+                            if (cid == 4) return vec3(0.85, 0.15, 0.85); // Magenta
+                            if (cid == 5) return vec3(0.15, 0.85, 0.85); // Cyan
+                            if (cid == 6) return vec3(0.95, 0.55, 0.15); // Orange
+                            return vec3(0.65, 0.45, 0.85); // Purple
+                        }
+                        
+                        void main() {
+                            vec2 circ = 2.0 * gl_PointCoord - 1.0;
+                            if (dot(circ, circ) > 1.0) {
+                                discard;
+                            }
+                            
+                            // Check plane distance
+                            bool isInlier = false;
+                            if (segmentationEnabled > 0.5) {
+                                float dist = abs(planeEquation.x * vWorldPos.x + 
+                                                 planeEquation.y * vWorldPos.y + 
+                                                 planeEquation.z * vWorldPos.z + 
+                                                 planeEquation.w);
+                                if (dist < planeThreshold) {
+                                    isInlier = true;
+                                }
+                            }
+                            
+                            // Object / Plane focus filter
+                            if (selectedClusterId > -2.5) {
+                                if (selectedClusterId == -1.0) {
+                                    if (vClusterId != -1.0) discard;
+                                } else if (selectedClusterId == -2.0) {
+                                    if (vClusterId == -1.0) discard;
+                                } else {
+                                    if (vClusterId != selectedClusterId) discard;
+                                }
+                            } else if (segmentationEnabled > 0.5) {
+                                if (segmentationMode > 1.5) {
+                                    if (!isInlier) discard;
+                                } else if (segmentationMode > 0.5) {
+                                    if (isInlier) discard;
+                                }
+                            }
+                            
+                            vec3 color;
+                            if (useColorTexture > 1.5) {
+                                // Color by cluster
+                                if (vClusterId == -1.0) {
+                                    color = vec3(0.25, 0.25, 0.25); // Dark Gray for plane
+                                } else if (vClusterId == -2.0) {
+                                    color = vec3(0.4, 0.4, 0.4); // Medium gray for outliers
+                                } else {
+                                    color = getClusterColor(vClusterId);
+                                }
+                            } else if (useColorTexture > 0.5) {
+                                color = texture2D(colorTexture, vUv).rgb;
+                            } else {
+                                color = getTurboColormap(vDepth);
+                            }
+                            
+                            // Highlight Mode: Color inliers bright green
+                            if (segmentationEnabled > 0.5 && segmentationMode < 0.5 && isInlier && useColorTexture < 1.5 && selectedClusterId == -3.0) {
+                                color = vec3(0.0, 0.8, 0.2);
+                            }
+                            
+                            gl_FragColor = vec4(color, 1.0);
+                        }
+                    `,
+                    transparent: true,
+                    depthWrite: true,
+                    depthTest: true
+                });
+
+                // Resolution of the 3D Point Cloud. 320x240 points provides 76.8k points.
+                const gridW = 320;
+                const gridH = 240;
+                const numPoints = gridW * gridH;
+
+                const positions = new Float32Array(numPoints * 3);
+                const uvs = new Float32Array(numPoints * 2);
+                const clusterIds = new Float32Array(numPoints);
+                clusterIds.fill(-2); // default to outlier unclassified
+
+                let posIdx = 0;
+                let uvIdx = 0;
+                for (let y = 0; y < gridH; y++) {
+                    for (let x = 0; x < gridW; x++) {
+                        const u = x / (gridW - 1);
+                        const v = 1.0 - (y / (gridH - 1));
+
+                        positions[posIdx++] = (u - 0.5) * 2.0;
+                        positions[posIdx++] = (v - 0.5) * 2.0;
+                        positions[posIdx++] = 0.0;
+
+                        uvs[uvIdx++] = u;
+                        uvs[uvIdx++] = v;
+                    }
+                }
+
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+                geometry.setAttribute('clusterId', new THREE.BufferAttribute(clusterIds, 1));
+
+                pointCloudMesh = new THREE.Points(geometry, material);
+                scene.add(pointCloudMesh);
+
+                isPointCloudInitialized = true;
+                window.addEventListener('resize', onWindowResize);
+            }
+
+            function onWindowResize() {
+                const container = document.getElementById('canvas-container');
+                if (!container || !isPointCloudInitialized) return;
+                
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.aspectRatio.value = camera.aspect;
+                }
+            }
+
+            // Segmentation cache depth representation
+            let cachedDepths = null;
+
+            function startThreeJSLoop() {
+                if (isThreeJSRunning) return;
+                isThreeJSRunning = true;
+                animateThreeJS();
+            }
+
+            function stopThreeJSLoop() {
+                isThreeJSRunning = false;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+            }
+
+            function animateThreeJS() {
+                if (!isThreeJSRunning) return;
+                animationFrameId = requestAnimationFrame(animateThreeJS);
+
+                if (controls) controls.update();
+                
+                if (pointCloudMesh && document.getElementById('chk-auto-rotate').checked) {
+                    pointCloudMesh.rotation.y += 0.005;
+                }
+
+                if (renderer && scene && camera) {
+                    renderer.render(scene, camera);
+                }
+            }
+
+            function updatePointCloud(leftImgB64, rawDepthB64) {
+                if (!isPointCloudInitialized) {
+                    initThreeJS();
+                }
+                
+                currentRawDepth = rawDepthB64;
+                currentLeftImage = leftImgB64;
+
+                clearSegmentation();
+
+                if (pointCloudMesh) {
+                    pointCloudMesh.rotation.set(0, 0, 0);
+                }
+
+                textureLoader.load(leftImgB64, (colorTex) => {
+                    colorTex.minFilter = THREE.LinearFilter;
+                    if (pointCloudMesh) {
+                        pointCloudMesh.material.uniforms.colorTexture.value = colorTex;
+                    }
+                });
+
+                textureLoader.load(rawDepthB64, (depthTex) => {
+                    depthTex.minFilter = THREE.LinearFilter;
+                    if (pointCloudMesh) {
+                        pointCloudMesh.material.uniforms.depthTexture.value = depthTex;
+                    }
+                });
+                
+                // Draw depth map to canvas to cache for RANSAC plane segmentation
+                const img = new Image();
+                img.onload = () => {
+                    const w = 80;
+                    const h = 60;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const pixels = ctx.getImageData(0, 0, w, h).data;
+                    
+                    cachedDepths = new Float32Array(w * h);
+                    for (let i = 0; i < w * h; i++) {
+                        cachedDepths[i] = pixels[i * 4] / 255.0;
+                    }
+                    
+                    document.getElementById('btn-segment-plane').disabled = false;
+                    document.getElementById('plane-info').innerText = "Depth cached. Ready for segmentation.";
+                };
+                img.src = rawDepthB64;
+                
+                resetThreeJSView();
+            }
+
+            function resetThreeJSView() {
+                if (!isPointCloudInitialized) return;
+                
+                camera.position.set(0, 0, 2.5);
+                controls.target.set(0, 0, -1.0);
+                controls.update();
+                if (pointCloudMesh) {
+                    pointCloudMesh.rotation.set(0, 0, 0);
+                }
+            }
+
+            // Bind Settings UI Event Listeners
+            const inputPtSize = document.getElementById('input-ptsize');
+            const valPtSize = document.getElementById('val-ptsize');
+            const inputDScale = document.getElementById('input-dscale');
+            const valDScale = document.getElementById('val-dscale');
+            const inputDOffset = document.getElementById('input-doffset');
+            const valDOffset = document.getElementById('val-doffset');
+            const selectProjp = document.getElementById('select-projp');
+            const selectColor = document.getElementById('select-color');
+            const btnResetView = document.getElementById('btn-reset-view');
+            const btnExportPly = document.getElementById('btn-export-ply');
+
+            // Plane Segmentation Controls
+            const inputSegThresh = document.getElementById('input-seg-thresh');
+            const valSegThresh = document.getElementById('val-seg-thresh');
+            const selectSegMode = document.getElementById('select-seg-mode');
+            const btnSegmentPlane = document.getElementById('btn-segment-plane');
+            const btnClearSeg = document.getElementById('btn-clear-seg');
+            const selectViewObject = document.getElementById('select-view-object');
+
+            inputPtSize.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valPtSize.textContent = val.toFixed(2);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.pointSize.value = val;
+                }
+            });
+
+            inputDScale.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valDScale.textContent = val.toFixed(1);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.depthScale.value = val;
+                }
+            });
+
+            inputDOffset.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valDOffset.textContent = val.toFixed(1);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.depthOffset.value = val;
+                }
+            });
+
+            selectProjp.addEventListener('change', (e) => {
+                const val = parseInt(e.target.value);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.dispType.value = val;
+                }
+            });
+
+            selectColor.addEventListener('change', (e) => {
+                const val = parseFloat(e.target.value);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.useColorTexture.value = val;
+                }
+            });
+
+            // Plane Segmentation listeners
+            inputSegThresh.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                valSegThresh.textContent = val.toFixed(2);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.planeThreshold.value = val;
+                }
+            });
+
+            selectSegMode.addEventListener('change', (e) => {
+                const val = parseFloat(e.target.value);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.segmentationMode.value = val;
+                }
+            });
+
+            selectViewObject.addEventListener('change', (e) => {
+                const val = parseFloat(e.target.value);
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.selectedClusterId.value = val;
+                }
+            });
+
+            btnSegmentPlane.addEventListener('click', segmentPlane);
+            btnClearSeg.addEventListener('click', clearSegmentation);
+
+            function runRANSAC(points, iterations, threshold) {
+                let bestPlane = null;
+                let bestInliersCount = -1;
+                
+                const numPoints = points.length;
+                if (numPoints < 3) return null;
+                
+                for (let i = 0; i < iterations; i++) {
+                    const idx1 = Math.floor(Math.random() * numPoints);
+                    const idx2 = Math.floor(Math.random() * numPoints);
+                    const idx3 = Math.floor(Math.random() * numPoints);
+                    
+                    if (idx1 === idx2 || idx1 === idx3 || idx2 === idx3) continue;
+                    
+                    const p1 = points[idx1];
+                    const p2 = points[idx2];
+                    const p3 = points[idx3];
+                    
+                    const v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+                    const v2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
+                    
+                    const nx = v1.y * v2.z - v1.z * v2.y;
+                    const ny = v1.z * v2.x - v1.x * v2.z;
+                    const nz = v1.x * v2.y - v1.y * v2.x;
+                    
+                    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+                    if (len < 1e-6) continue;
+                    
+                    const a = nx / len;
+                    const b = ny / len;
+                    const c = nz / len;
+                    const d = -(a * p1.x + b * p1.y + c * p1.z);
+                    
+                    let inliers = 0;
+                    for (let j = 0; j < numPoints; j++) {
+                        const p = points[j];
+                        const dist = Math.abs(a * p.x + b * p.y + c * p.z + d);
+                        if (dist < threshold) {
+                            inliers++;
+                        }
+                    }
+                    
+                    if (inliers > bestInliersCount) {
+                        bestInliersCount = inliers;
+                        bestPlane = { a, b, c, d };
+                    }
+                }
+                
+                return bestPlane;
+            }
+
+            function segmentPlane() {
+                if (!cachedDepths) {
+                    alert("No depth data cached yet.");
+                    return;
+                }
+                
+                const w = 80;
+                const h = 60;
+                const depthScale = parseFloat(inputDScale.value);
+                const depthOffset = parseFloat(inputDOffset.value);
+                const dispType = parseInt(selectProjp.value);
+                
+                const container = document.getElementById('canvas-container');
+                const aspectRatio = container ? (container.clientWidth / container.clientHeight) : (4 / 3);
+                
+                const points = [];
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        const idx = y * w + x;
+                        const rawDepthVal = cachedDepths[idx];
+                        
+                        let z;
+                        if (dispType === 0) {
+                            z = depthScale / (rawDepthVal + 0.01) + depthOffset;
+                        } else {
+                            z = rawDepthVal * depthScale + depthOffset;
+                        }
+                        
+                        const u = x / (w - 1);
+                        const v = 1.0 - (y / (h - 1));
+                        
+                        const px = (u - 0.5) * z * aspectRatio;
+                        const py = (v - 0.5) * z;
+                        const pz = -z;
+                        
+                        points.push({ x: px, y: py, z: pz });
+                    }
+                }
+                
+                const ransacThresh = parseFloat(inputSegThresh.value);
+                const plane = runRANSAC(points, 250, ransacThresh);
+                
+                if (plane) {
+                    const gridClassifications = new Int32Array(w * h);
+                    const objectPoints = [];
+                    const objectOrigIndices = [];
+
+                    for (let i = 0; i < points.length; i++) {
+                        const p = points[i];
+                        const dist = Math.abs(plane.a * p.x + plane.b * p.y + plane.c * p.z + plane.d);
+                        if (dist < ransacThresh) {
+                            gridClassifications[i] = -1; // Plane
+                        } else {
+                            gridClassifications[i] = -2; // Outlier
+                            objectPoints.push(p);
+                            objectOrigIndices.push(i);
+                        }
+                    }
+
+                    // Run Euclidean Clustering on Outliers
+                    const clusterRadius = 0.25;
+                    const minClusterSize = 15;
+                    const numObjPoints = objectPoints.length;
+                    const visited = new Uint8Array(numObjPoints);
+                    const clusters = [];
+                    const r2 = clusterRadius * clusterRadius;
+
+                    for (let i = 0; i < numObjPoints; i++) {
+                        if (visited[i]) continue;
+                        
+                        const cluster = [];
+                        const queue = [i];
+                        visited[i] = 1;
+                        
+                        let qIdx = 0;
+                        while (qIdx < queue.length) {
+                            const currIdx = queue[qIdx++];
+                            cluster.push(currIdx);
+                            const currPt = objectPoints[currIdx];
+                            
+                            for (let j = 0; j < numObjPoints; j++) {
+                                if (visited[j]) continue;
+                                const otherPt = objectPoints[j];
+                                const dx = currPt.x - otherPt.x;
+                                const dy = currPt.y - otherPt.y;
+                                const dz = currPt.z - otherPt.z;
+                                const d2 = dx * dx + dy * dy + dz * dz;
+                                if (d2 < r2) {
+                                    visited[j] = 1;
+                                    queue.push(j);
+                                }
+                            }
+                        }
+                        
+                        if (cluster.length >= minClusterSize) {
+                            clusters.push(cluster.map(idx => objectOrigIndices[idx]));
+                        }
+                    }
+
+                    // Sort clusters descending by size
+                    clusters.sort((a, b) => b.length - a.length);
+                    for (let cId = 0; cId < clusters.length; cId++) {
+                        for (let idx of clusters[cId]) {
+                            gridClassifications[idx] = cId;
+                        }
+                    }
+
+                    // Upsample gridClassifications (80x60) to high-res point cloud (320x240)
+                    const hrW = 320;
+                    const hrH = 240;
+                    const hrClassifications = new Float32Array(hrW * hrH);
+                    for (let y = 0; y < hrH; y++) {
+                        const y80 = Math.floor(y * (h / hrH));
+                        for (let x = 0; x < hrW; x++) {
+                            const x80 = Math.floor(x * (w / hrW));
+                            hrClassifications[y * hrW + x] = gridClassifications[y80 * w + x80];
+                        }
+                    }
+
+                    // Update Three.js buffer geometry
+                    if (pointCloudMesh) {
+                        const clusterAttr = pointCloudMesh.geometry.getAttribute('clusterId');
+                        if (clusterAttr) {
+                            clusterAttr.copyArray(hrClassifications);
+                            clusterAttr.needsUpdate = true;
+                        }
+
+                        pointCloudMesh.material.uniforms.planeEquation.value.set(plane.a, plane.b, plane.c, plane.d);
+                        pointCloudMesh.material.uniforms.planeThreshold.value = ransacThresh;
+                        pointCloudMesh.material.uniforms.segmentationEnabled.value = 1.0;
+                        pointCloudMesh.material.uniforms.selectedClusterId.value = -3.0; // Show all by default
+                    }
+
+                    // Rebuild Focus View dropdown options dynamically
+                    selectViewObject.innerHTML = '';
+                    
+                    const optShowAll = document.createElement('option');
+                    optShowAll.value = '-3.0';
+                    optShowAll.innerText = 'Show All Points';
+                    selectViewObject.appendChild(optShowAll);
+
+                    const optPlaneOnly = document.createElement('option');
+                    optPlaneOnly.value = '-1.0';
+                    optPlaneOnly.innerText = 'Show Plane Only';
+                    selectViewObject.appendChild(optPlaneOnly);
+
+                    const optAllObjects = document.createElement('option');
+                    optAllObjects.value = '-2.0';
+                    optAllObjects.innerText = 'Show All Objects (No Plane)';
+                    selectViewObject.appendChild(optAllObjects);
+
+                    for (let cId = 0; cId < clusters.length; cId++) {
+                        const opt = document.createElement('option');
+                        opt.value = cId.toFixed(1);
+                        opt.innerText = `Object ${cId + 1} (${clusters[cId].length * 16} pts)`;
+                        selectViewObject.appendChild(opt);
+                    }
+
+                    document.getElementById('segment-view-row').style.display = 'flex';
+                    document.getElementById('plane-info').innerText = `Plane: [${plane.a.toFixed(2)}, ${plane.b.toFixed(2)}, ${plane.c.toFixed(2)}]. Found ${clusters.length} objects.`;
+                } else {
+                    document.getElementById('plane-info').innerText = "Plane detection failed.";
+                }
+            }
+
+            function clearSegmentation() {
+                if (pointCloudMesh) {
+                    pointCloudMesh.material.uniforms.segmentationEnabled.value = 0.0;
+                    pointCloudMesh.material.uniforms.planeEquation.value.set(0, 0, 0, 0);
+                    pointCloudMesh.material.uniforms.selectedClusterId.value = -3.0;
+                    
+                    const clusterAttr = pointCloudMesh.geometry.getAttribute('clusterId');
+                    if (clusterAttr) {
+                        const len = clusterAttr.count;
+                        for (let i = 0; i < len; i++) {
+                            clusterAttr.setX(i, -2);
+                        }
+                        clusterAttr.needsUpdate = true;
+                    }
+                }
+                document.getElementById('segment-view-row').style.display = 'none';
+                document.getElementById('plane-info').innerText = "Segmentation disabled.";
+            }
+
+            btnResetView.addEventListener('click', resetThreeJSView);
+            btnExportPly.addEventListener('click', exportPLY);
+
+            function exportPLY() {
+                if (!currentRawDepth || !currentLeftImage) {
+                    alert("No point cloud data exists. Please compute a depth map first.");
+                    return;
+                }
+
+                const width = 320;
+                const height = 240;
+
+                const canvasDepth = document.createElement('canvas');
+                canvasDepth.width = width;
+                canvasDepth.height = height;
+                const ctxDepth = canvasDepth.getContext('2d');
+
+                const canvasColor = document.createElement('canvas');
+                canvasColor.width = width;
+                canvasColor.height = height;
+                const ctxColor = canvasColor.getContext('2d');
+
+                const imgDepth = new Image();
+                imgDepth.onload = () => {
+                    ctxDepth.drawImage(imgDepth, 0, 0, width, height);
+                    const depthData = ctxDepth.getImageData(0, 0, width, height).data;
+
+                    const imgColor = new Image();
+                    imgColor.onload = () => {
+                        ctxColor.drawImage(imgColor, 0, 0, width, height);
+                        const colorData = ctxColor.getImageData(0, 0, width, height).data;
+
+                        const depthScale = parseFloat(inputDScale.value);
+                        const depthOffset = parseFloat(inputDOffset.value);
+                        const dispType = parseInt(selectProjp.value);
+                        const aspectRatio = width / height;
+
+                        let plyContent = "";
+                        let verticesCount = 0;
+
+                        for (let y = 0; y < height; y++) {
+                            for (let x = 0; x < width; x++) {
+                                const idx = (y * width + x) * 4;
+                                const rawDepthVal = depthData[idx] / 255.0; // r channel (grayscale PNG)
+
+                                let z;
+                                if (dispType === 0) {
+                                    z = depthScale / (rawDepthVal + 0.01) + depthOffset;
+                                } else {
+                                    z = rawDepthVal * depthScale + depthOffset;
+                                }
+
+                                const u = x / (width - 1);
+                                const v = 1.0 - (y / (height - 1));
+
+                                const px = (u - 0.5) * z * aspectRatio;
+                                const py = (v - 0.5) * z;
+                                const pz = -z;
+
+                                const r = colorData[idx];
+                                const g = colorData[idx+1];
+                                const b = colorData[idx+2];
+
+                                plyContent += `${px.toFixed(4)} ${py.toFixed(4)} ${pz.toFixed(4)} ${r} ${g} ${b}\n`;
+                                verticesCount++;
+                            }
+                        }
+
+                        const header = `ply
+format ascii 1.0
+comment Exported from WAFT-Stereo Spatial Hub
+element vertex ${verticesCount}
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header
+`;
+
+                        const blob = new Blob([header + plyContent], { type: 'text/plain' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = 'waft_stereo_pointcloud.ply';
+                        link.click();
+                    };
+                    imgColor.src = currentLeftImage;
+                };
+                imgDepth.src = currentRawDepth;
+            }
+
+            // Tab selection
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+
+                    // Hide all wrappers
+                    views.depth.style.display = 'none';
+                    views.concat.style.display = 'none';
+                    views.slider.style.display = 'none';
+                    views.pointcloud.style.display = 'none';
+                    
+                    stopThreeJSLoop();
+
+                    const target = tab.getAttribute('data-target');
+                    if (target === 'depth') {
+                        views.depth.style.display = 'flex';
+                        images.depth.style.display = 'block';
+                    } else if (target === 'concat') {
+                        views.concat.style.display = 'flex';
+                        images.concat.style.display = 'block';
+                    } else if (target === 'slider') {
+                        views.slider.style.display = 'block';
+                        resetSlider();
+                    } else if (target === 'pointcloud') {
+                        views.pointcloud.style.display = 'flex';
+                        startThreeJSLoop();
+                        setTimeout(onWindowResize, 50);
+                    }
+                });
+            });
+
+            // Form Submit Predict API
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+
+                errorBanner.style.display = 'none';
+                views.placeholder.style.display = 'none';
+                views.depth.style.display = 'none';
+                views.concat.style.display = 'none';
+                views.slider.style.display = 'none';
+                views.pointcloud.style.display = 'none';
+                views.tabContainer.style.display = 'none';
+                views.loader.style.display = 'flex';
+
+                stopThreeJSLoop();
+                submitBtn.disabled = true;
+
+                const formData = new FormData(form);
+
+                fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    views.loader.style.display = 'none';
+                    submitBtn.disabled = false;
+
+                    if (data.success) {
+                        // Load image sources
+                        images.depth.src = data.depth_map;
+                        images.concat.src = data.concat;
+                        images.sliderBefore.src = data.left_image;
+                        images.sliderAfter.src = data.depth_map;
+
+                        // Live generate point cloud textures
+                        updatePointCloud(data.left_image, data.raw_depth);
+
+                        // Display result tab container & default tab (depth)
+                        views.tabContainer.style.display = 'flex';
+                        
+                        // Activate default tab (depth)
+                        const activeTab = document.querySelector('.tab[data-target="depth"]');
+                        tabs.forEach(t => t.classList.remove('active'));
+                        activeTab.classList.add('active');
+
+                        views.depth.style.display = 'flex';
+                        images.depth.style.display = 'block';
+                    } else {
+                        showError(data.error || 'Estimation failed. Please try again.');
+                    }
+                })
+                .catch(err => {
+                    views.loader.style.display = 'none';
+                    submitBtn.disabled = false;
+                    showError('Failed to communicate with the server. Please check that Flask is running.');
+                    console.error(err);
+                });
+            });
+
+            function showError(msg) {
+                errorMsg.innerText = msg;
+                errorBanner.style.display = 'flex';
+                views.placeholder.style.display = 'flex';
+            }
+
+            // Interactive Comparison Slider logic
+            const slider = views.slider;
+            const beforeImg = images.sliderBefore;
+            const handle = document.getElementById('slider-handle');
+            let isDragging = false;
+
+            function moveSlider(x) {
+                const rect = slider.getBoundingClientRect();
+                let positionX = x - rect.left;
+                
+                if (positionX < 0) positionX = 0;
+                if (positionX > rect.width) positionX = rect.width;
+
+                const percentage = (positionX / rect.width) * 100;
+                
+                beforeImg.style.clipPath = `polygon(0 0, ${percentage}% 0, ${percentage}% 100%, 0 100%)`;
+                handle.style.left = `${percentage}%`;
+            }
+
+            function resetSlider() {
+                beforeImg.style.clipPath = `polygon(0 0, 50% 0, 50% 100%, 0 100%)`;
+                handle.style.left = `50%`;
+            }
+
+            // Mouse Events
+            handle.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                e.preventDefault();
+            });
+
+            window.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                moveSlider(e.clientX);
+            });
+
+            // Touch Events (Mobile support)
+            handle.addEventListener('touchstart', (e) => {
+                isDragging = true;
+            });
+
+            window.addEventListener('touchend', () => {
+                isDragging = false;
+            });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                moveSlider(e.touches[0].clientX);
+            });
+        });
+    </script>
+</body>
+</html>
