@@ -118,6 +118,7 @@ def get_args_parser():
     parser.add_argument("--config-file", default="", metavar="FILE", help="path to config file")
     parser.add_argument("--eval-only", action='store_true')
     parser.add_argument("--ckpt", default=None, help='path to the checkpoint file or model name when eval_only is True')
+    parser.add_argument("--checkpoint-dir", default=None, help='path to the checkpoint directory')
     parser.add_argument("--seed", type=int, default=42, help='random seed')
     # distributed training
     parser.add_argument("--num-gpus", type=int, default=1, help="number of gpus *per machine*")
@@ -165,9 +166,10 @@ def _setup(cfg, args):
         cfg (CfgNode): the full config to be used
         args (argparse.NameSpace): the command line arguments to be logged
     """
-    data_name = args.config_file.split('/')[-2]
-    alg_name = args.config_file.split('/')[-1].split('.')[0]
-    args.checkpoint_dir = f"ckpts/{data_name}/{alg_name}/{args.seed}"
+    data_name = args.config_file.replace('\\', '/').split('/')[-2]
+    alg_name = args.config_file.replace('\\', '/').split('/')[-1].split('.')[0]
+    if getattr(args, 'checkpoint_dir', None) is None:
+        args.checkpoint_dir = f"ckpts/{data_name}/{alg_name}/{args.seed}"
     checkpoint_dir = args.checkpoint_dir
     if comm.is_main_process() and checkpoint_dir:
         misc.check_path(checkpoint_dir)
@@ -276,8 +278,8 @@ def main(args):
     criterion = build_criterion(cfg)
 
     # Recover checkpoint from cloud
-    data_name = args.config_file.split('/')[-2]
-    alg_name = args.config_file.split('/')[-1].split('.')[0]
+    data_name = args.config_file.replace('\\', '/').split('/')[-2]
+    alg_name = args.config_file.replace('\\', '/').split('/')[-1].split('.')[0]
     cloud_latest_name = f"{data_name}_{alg_name}_latest.pth"
     cloud_best_name = f"{data_name}_{alg_name}_best.pth"
     
