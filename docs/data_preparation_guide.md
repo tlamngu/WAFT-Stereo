@@ -114,7 +114,7 @@ datasets/KITTI/
 ```
 
 ### SceneFlow
-The SceneFlow dataset consists of three subsets: `FlyingThings3D`, `Monkaa`, and `driving`. The default `sceneflow` dataloader dynamically aggregates all three subsets for training. Ensure your folders are structured as follows:
+The SceneFlow dataset is configured to load two subsets: `FlyingThings3D` and `driving` (excluding `Monkaa`). Ensure your folders are structured as follows:
 
 ```
 datasets/sceneflow/
@@ -123,9 +123,6 @@ datasets/sceneflow/
 │   │   └── TRAIN/ (containing left/right image folders)
 │   └── disparity/
 │       └── TRAIN/ (containing left/right disparity PFM folders)
-├── Monkaa/
-│   ├── frames_finalpass/ (containing left/right image folders)
-│   └── disparity/ (containing left/right disparity PFM folders)
 └── driving/
     ├── frames_finalpass/
     │   └── [focal_length_param]/[scene_direction]/[scene_speed]/

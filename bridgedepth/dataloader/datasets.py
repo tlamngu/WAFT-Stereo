@@ -200,7 +200,6 @@ class SceneFlowDatasets(StereoDataset):
             self._add_things("TEST")
         else:
             self._add_things("TRAIN")
-            self._add_monkaa()
             self._add_driving()
 
     def _add_things(self, split='TRAIN'):
