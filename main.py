@@ -267,7 +267,7 @@ def main(args):
         checkpoint = torch.load(args.ckpt, map_location='cpu', weights_only=False)
         weights = checkpoint['model'] if 'model' in checkpoint else checkpoint
         model_without_ddp.load_state_dict(weights, strict=False)
-        eval_disp(model, cfg)
+        eval_disp(model, cfg, output_dir=getattr(args, 'checkpoint_dir', 'ckpts'))
         return
 
     num_params = sum(p.numel() for p in model_without_ddp.parameters())
@@ -428,7 +428,7 @@ def main(args):
 
             if cfg.TEST.EVAL_PERIOD > 0 and total_steps % cfg.TEST.EVAL_PERIOD == 0:
                 logger.info('Start validation')
-                result_dict = eval_disp(model, cfg)
+                result_dict = eval_disp(model, cfg, output_dir=args.checkpoint_dir)
                 if comm.is_main_process():
                     wandb.log({f"val/{k}": v for k, v in result_dict.items()})
                     

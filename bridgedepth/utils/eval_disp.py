@@ -128,8 +128,66 @@ class DatasetEvaluators(DatasetEvaluator):
         return results
 
 
+def save_val_visualization(inputs, outputs, output_dir):
+    import os
+    import matplotlib.pyplot as plt
+    
+    try:
+        # Extract images (batch index 0)
+        img1 = inputs['img1'][0].cpu().permute(1, 2, 0).numpy().astype(np.uint8)
+        img2 = inputs['img2'][0].cpu().permute(1, 2, 0).numpy().astype(np.uint8)
+        
+        pred_disp = outputs['disp_pred'][0].cpu().numpy()
+        
+        has_gt = 'disp' in inputs
+        if has_gt:
+            gt_disp = inputs['disp'][0].cpu().numpy()
+            if 'valid' in inputs:
+                valid = inputs['valid'][0].cpu().numpy()
+                gt_disp = np.where(valid, gt_disp, 0)
+        
+        num_subplots = 4 if has_gt else 3
+        fig, axes = plt.subplots(1, num_subplots, figsize=(4 * num_subplots, 4))
+        
+        axes[0].imshow(img1)
+        axes[0].set_title("Left Image")
+        axes[0].axis('off')
+        
+        axes[1].imshow(img2)
+        axes[1].set_title("Right Image")
+        axes[1].axis('off')
+        
+        im_pred = axes[2].imshow(pred_disp, cmap='inferno')
+        axes[2].set_title("Predicted Disparity")
+        axes[2].axis('off')
+        fig.colorbar(im_pred, ax=axes[2], fraction=0.046, pad=0.04)
+        
+        if has_gt:
+            im_gt = axes[3].imshow(gt_disp, cmap='inferno')
+            axes[3].set_title("Ground Truth")
+            axes[3].axis('off')
+            fig.colorbar(im_gt, ax=axes[3], fraction=0.046, pad=0.04)
+            
+        plt.tight_layout()
+        
+        os.makedirs(output_dir, exist_ok=True)
+        viz_path = os.path.join(output_dir, "val_viz_latest.png")
+        plt.savefig(viz_path, bbox_inches='tight', dpi=150)
+        plt.close(fig)
+        
+        import wandb
+        if wandb.run is not None:
+            wandb.log({
+                "val/visualization": wandb.Image(viz_path, caption="Validation visualization")
+            }, commit=False)
+            
+        print(f"Validation visualization saved to {viz_path}")
+    except Exception as e:
+        print(f"Failed to generate validation visualization: {e}")
+
+
 def inference_on_dataset(
-        cfg, model, data_loader, evaluator: Union[DatasetEvaluator, List[DatasetEvaluator], None], **kwargs
+        cfg, model, data_loader, evaluator: Union[DatasetEvaluator, List[DatasetEvaluator], None], output_dir=None, **kwargs
 ):
     """
     Run model on the data_loader and evaluate the metrics with evaluator.
@@ -195,6 +253,9 @@ def inference_on_dataset(
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             total_compute_time += time.perf_counter() - start_compute_time
+
+            if idx == 0 and output_dir is not None and comm.is_main_process():
+                save_val_visualization(inputs, outputs, output_dir)
 
             start_eval_time = time.perf_counter()
             evaluator.process(inputs, outputs)
@@ -352,7 +413,7 @@ class DispEvaluator(DatasetEvaluator):
         return results
     
 
-def eval_disp(model, cfg):
+def eval_disp(model, cfg, output_dir=None):
     logger = logging.getLogger(cfg.ALGORITHM)
     results = OrderedDict()
     for idx, dataset_name in enumerate(cfg.DATASETS.TEST):
@@ -360,7 +421,7 @@ def eval_disp(model, cfg):
         # build evaluator for this dataset
         evaluator = DispEvaluator(thres=cfg.TEST.EVAL_THRESH[idx], only_valid=cfg.TEST.EVAL_ONLY_VALID[idx],
                                   max_disp=cfg.TEST.EVAL_MAX_DISP[idx], divis_by=cfg.DATASETS.DIVIS_BY)
-        results_i = inference_on_dataset(cfg, model, data_loader, evaluator)
+        results_i = inference_on_dataset(cfg, model, data_loader, evaluator, output_dir=output_dir)
         results[dataset_name] = results_i
         if comm.is_main_process():
             assert isinstance(
