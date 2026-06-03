@@ -541,17 +541,16 @@ class WMGStereo(StereoDataset):
         self.disparity_list = self._scan_pairs(left_disparity_pattern, None)
 
 import json
-import glob
 
 
 class SanpoReal(StereoDataset):
     def __init__(self, aug_params=None, root='datasets/sanpo_real'):
         super().__init__(aug_params, sparse=False, reader=self._read_sanpo_depth)
         assert os.path.exists(root), f"Dataset root not found: {root}"
-        for session in sorted(glob.glob(os.path.join(root, 'session_*'))):
-            lefts  = sorted(glob.glob(os.path.join(session, 'left',     '*.png')))
-            rights = sorted(glob.glob(os.path.join(session, 'right',    '*.png')))
-            depths = sorted(glob.glob(os.path.join(session, 'depth_ml', '*.npy')) + glob.glob(os.path.join(session, 'depth_ml', '*.npz')))
+        for session in sorted(glob(os.path.join(root, 'session_*'))):
+            lefts  = sorted(glob(os.path.join(session, 'left',     '*.png')))
+            rights = sorted(glob(os.path.join(session, 'right',    '*.png')))
+            depths = sorted(glob(os.path.join(session, 'depth_ml', '*.npy')) + glob(os.path.join(session, 'depth_ml', '*.npz')))
             calib  = os.path.join(session, 'calib.json')
             for l, r, d in zip(lefts, rights, depths):
                 self.image_list.append([l, r])
