@@ -76,3 +76,15 @@ This document provides a comprehensive log of every new code block, class, and h
 
 ### Dynamic LoRA & Parameter Freezing
 * **Functionality**: Checked if the selected backbone model is a hybrid variant (`"hybrid" in model_name`). If a pure convolutional variant is selected (e.g. `mobilenetv4_conv_medium`), the training code logs a warning, skips PEFT/LoRA wrapping, and freezes the backbone parameters by setting `requires_grad = False` (as specified in the migration plan).
+
+---
+
+## 🎨 7. Validation Visualization & Notebook Dynamic Display
+* **File Locations**: [bridgedepth/utils/eval_disp.py](file:///C:/Users/tlamn/Documents/AI/WAFT-Stereo/bridgedepth/utils/eval_disp.py), [main.py](file:///C:/Users/tlamn/Documents/AI/WAFT-Stereo/main.py), [Kaggle_Training_Notebook.ipynb](file:///C:/Users/tlamn/Documents/AI/WAFT-Stereo/Kaggle_Training_Notebook.ipynb)
+
+### `save_val_visualization`
+* **Functionality**: Extracts the left image, right image, predicted disparity, and ground-truth disparity (if available) for the first sample in the validation dataset batch. It plots them as a grid using `matplotlib`, saves the result to the checkpoint directory as `val_viz_latest.png`, and logs it directly to `wandb` as a `wandb.Image` (with `commit=False` to associate with the current step).
+* **Integrations**: Integrated into the `inference_on_dataset` loop in `eval_disp.py` (executed at the first batch index `idx == 0` on the main process). Both evaluation entry points in `main.py` pass their resolved `checkpoint_dir` to `eval_disp()` to save the images.
+
+### Jupyter Notebook Subprocess Dynamic Display
+* **Functionality**: Rather than running training blocking via simple `!python` CLI commands, the notebook runs training as a background subprocess using `subprocess.Popen`. A loop in the notebook cell monitors the process state and uses IPython's `clear_output` and `display(Image(filename=...))` to render the latest `val_viz_latest.png` visualization in real-time as training progresses.
