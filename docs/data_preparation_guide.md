@@ -1,6 +1,6 @@
 # WAFT-Stereo Data Preparation Guide
 
-This guide describes how to structure, format, and prepare the dataset files for training and evaluating WAFT-Stereo models, with specific focus on the newly integrated **Sanpo-Synthetic** and **Sanpo-Real** datasets.
+This guide describes how to structure, format, and prepare the dataset files for training and evaluating WAFT-Stereo models, with specific focus on the newly integrated **Sanpo-Real** dataset.
 
 ---
 
@@ -14,36 +14,28 @@ WAFT-Stereo/
 │   ├── sceneflow/
 │   ├── KITTI/
 │   ├── middlebury/
-│   ├── sanpo_synthetic/  <-- New Synthetic Dataset
 │   └── sanpo_real/       <-- New Real Dataset
 ```
 
 ---
 
-## 🏙️ 2. Sanpo-Synthetic & Sanpo-Real Preparation
+## 🏙️ 2. Sanpo-Real Preparation
 
-The official SANPO dataset is hosted on Google Cloud Storage. Since the full dataset is roughly 6 TB, it is recommended to selectively download specific sessions.
+The official SANPO dataset is hosted on Google Cloud Storage. Since the full dataset is roughly 6 TB, it is recommended to selectively download specific sessions. Note that only the **Sanpo-Real** subset contains stereo image pairs (Left & Right camera views); the synthetic counterpart only provides mono (left view) frames and is not compatible with stereo matching.
 
 ### 📥 How to Download the Dataset
 You need to install the Google Cloud CLI (`gcloud`) on your machine. Follow the [Official gcloud CLI Installation Guide](https://cloud.google.com/sdk/docs/install).
 
 Once installed, use the `gcloud storage cp` command to download specific session directories:
 
-1. **Download a Synthetic Session**:
-   ```bash
-   # Download a synthetic session folder (containing left, right, depth (.npz), and calib.json)
-   gcloud storage cp -r "gs://gresearch/sanpo_dataset/v0/synthetic/session_0001" datasets/sanpo_synthetic/
-   ```
-
-2. **Download a Real Session**:
+1. **Download a Real Session**:
    ```bash
    # Download a real session folder (containing left, right, depth_ml (.npz), and calib.json)
    gcloud storage cp -r "gs://gresearch/sanpo_dataset/v0/real/session_1001" datasets/sanpo_real/
    ```
 
-3. **Check/List Official Train/Test Splits**:
+2. **Check/List Official Train/Test Splits**:
    ```bash
-   gcloud storage ls gs://gresearch/sanpo_dataset/v0/synthetic/splits/
    gcloud storage ls gs://gresearch/sanpo_dataset/v0/real/splits/
    ```
 
@@ -52,27 +44,18 @@ Because SANPO captures metric depth instead of pixel disparity, the loader conve
 ### Directory Layout
 ```
 datasets/
-├── sanpo_synthetic/
-│   ├── session_0001/
-│   │   ├── left/
-│   │   │   ├── 000000.png
-│   │   │   └── 000001.png
-│   │   ├── right/
-│   │   │   ├── 000000.png
-│   │   │   └── 000001.png
-│   │   ├── depth/
-│   │   │   ├── 000000.npy  (float32 depth in meters)
-│   │   │   └── 000001.npy
-│   │   └── calib.json
-│   └── session_0002/
-│       └── ...
 └── sanpo_real/
     ├── session_1001/
     │   ├── left/
+    │   │   ├── 000000.png
+    │   │   └── 000001.png
     │   ├── right/
+    │   │   ├── 000000.png
+    │   │   └── 000001.png
     │   ├── depth_ml/       (float32 ML depth in meters)
     │   └── calib.json
-    └── ...
+    └── session_1002/
+        └── ...
 ```
 
 ### Calibration JSON Format (`calib.json`)
@@ -88,7 +71,6 @@ Every session folder must contain a `calib.json` containing the camera parameter
 The loader converts the metric depth maps using:
 $$\text{disparity} = \frac{\text{focal\_length\_px} \times \text{baseline\_m}}{\text{depth\_m}}$$
 
-* **SanpoSynthetic**: Depth values are clipped to `[0.1m, 100.0m]` to avoid zero-division.
 * **SanpoReal**: Depths under `0.1m` are marked as invalid (disparity = 0, excluded from loss).
 
 ---

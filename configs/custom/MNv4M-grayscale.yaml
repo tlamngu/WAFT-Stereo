@@ -20,7 +20,7 @@ WAFT:
   LOSS: ['mixlap_40']
 
 DATASETS:
-  TRAIN: ("sanpo_synthetic",)
+  TRAIN: ("sceneflow",)
   MUL: (1,)
   CROP_SIZE: [320, 240]
   TEST: ("things",)
