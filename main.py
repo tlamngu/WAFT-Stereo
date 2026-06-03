@@ -38,6 +38,38 @@ def upload_checkpoint_to_r2(local_path, cloud_name):
     except Exception as e:
         print(f"Failed to upload checkpoint to R2: {e}")
 
+def recover_checkpoint_from_r2(local_dir, cloud_name):
+    import os
+    import boto3
+    
+    access_key = os.getenv("CF_R2_ACCESS_KEY_ID")
+    secret_key = os.getenv("CF_R2_SECRET_ACCESS_KEY")
+    endpoint = os.getenv("CF_R2_ENDPOINT_URL")
+    bucket_name = os.getenv("CF_R2_BUCKET_NAME")
+    
+    if not all([access_key, secret_key, endpoint, bucket_name]) or "your_" in access_key:
+        print("Cloudflare R2 credentials are not configured in .env. Skipping cloud recovery.")
+        return False
+        
+    local_path = os.path.join(local_dir, 'checkpoint_latest.pth')
+    try:
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            endpoint_url=endpoint
+        )
+        print(f"Checking cloud checkpoint {cloud_name} in bucket {bucket_name}...")
+        s3.head_object(Bucket=bucket_name, Key=cloud_name)
+        print(f"Downloading cloud checkpoint {cloud_name} to {local_path}...")
+        os.makedirs(local_dir, exist_ok=True)
+        s3.download_file(bucket_name, cloud_name, local_path)
+        print("Checkpoint downloaded successfully!")
+        return True
+    except Exception as e:
+        print(f"No cloud checkpoint found or download failed: {e}")
+        return False
+
 
 from algorithms.waft import WAFT
 from bridgedepth.config import export_model_config
@@ -234,6 +266,22 @@ def main(args):
     optimizer = build_optimizer(model_without_ddp, cfg)
     criterion = build_criterion(cfg)
 
+    # Recover checkpoint from cloud
+    data_name = args.config_file.split('/')[-2]
+    alg_name = args.config_file.split('/')[-1].split('.')[0]
+    cloud_latest_name = f"{data_name}_{alg_name}_latest.pth"
+    cloud_best_name = f"{data_name}_{alg_name}_best.pth"
+    
+    if comm.is_main_process():
+        recover_checkpoint_from_r2(args.checkpoint_dir, cloud_latest_name)
+    comm.synchronize()
+    
+    local_latest_path = os.path.join(args.checkpoint_dir, 'checkpoint_latest.pth')
+    if os.path.exists(local_latest_path):
+        cfg.defrost()
+        cfg.SOLVER.RESUME = local_latest_path
+        cfg.freeze()
+
     # resume checkpoints
     start_epoch = 0
     start_step = 0
@@ -278,9 +326,24 @@ def main(args):
     epoch = start_epoch
     logger.info('Start training')
 
+    best_epe = float('inf')
+    best_checkpoint_path = os.path.join(args.checkpoint_dir, 'checkpoint_best.pth')
+    has_new_best = False
+    
+    # Try loading best EPE from existing checkpoint if resuming
+    if resume and os.path.exists(best_checkpoint_path):
+        try:
+            best_chk = torch.load(best_checkpoint_path, map_location='cpu', weights_only=False)
+            if 'epe' in best_chk:
+                best_epe = best_chk['epe']
+                logger.info(f"Loaded existing best EPE from checkpoint: {best_epe:.4f}")
+        except Exception as e:
+            pass
+
     print_freq = 20
-    while total_steps < cfg.SOLVER.MAX_ITER:
-        model.train()
+    try:
+        while total_steps < cfg.SOLVER.MAX_ITER:
+            model.train()
         # manual change random seed for shuffling every epoch
         if comm.get_world_size() > 1:
             train_sampler.set_epoch(epoch)
@@ -325,6 +388,12 @@ def main(args):
                     wandb.log(wandb_log_dict)
                     avg_dict = {}
 
+            # Upload best checkpoint every 50 steps if it has changed
+            if total_steps % 50 == 0:
+                if comm.is_main_process() and has_new_best:
+                    upload_checkpoint_to_r2(best_checkpoint_path, cloud_best_name)
+                    has_new_best = False
+
             if total_steps % cfg.SOLVER.CHECKPOINT_PERIOD == 0 or total_steps == cfg.SOLVER.MAX_ITER:
                 if comm.is_main_process():
                     checkpoint_path = os.path.join(args.checkpoint_dir, 'step_%06d.pth' % total_steps)
@@ -332,7 +401,7 @@ def main(args):
                         'model': model_without_ddp.state_dict(),
                         'model_config': export_model_config(cfg),
                     }, checkpoint_path)
-                    upload_checkpoint_to_r2(checkpoint_path, 'step_%06d.pth' % total_steps)
+                    upload_checkpoint_to_r2(checkpoint_path, f"{data_name}_{alg_name}_step_%06d.pth" % total_steps)
 
             if total_steps % cfg.SOLVER.LATEST_CHECKPOINT_PERIOD == 0:
                 checkpoint_path = os.path.join(args.checkpoint_dir, 'checkpoint_latest.pth')
@@ -344,13 +413,35 @@ def main(args):
                         'step': total_steps,
                         'epoch': epoch,
                     }, checkpoint_path)
-                    upload_checkpoint_to_r2(checkpoint_path, 'checkpoint_latest.pth')
+                    upload_checkpoint_to_r2(checkpoint_path, cloud_latest_name)
 
             if cfg.TEST.EVAL_PERIOD > 0 and total_steps % cfg.TEST.EVAL_PERIOD == 0:
                 logger.info('Start validation')
                 result_dict = eval_disp(model, cfg)
                 if comm.is_main_process():
                     wandb.log({f"val/{k}": v for k, v in result_dict.items()})
+                    
+                    try:
+                        if 'disp' in result_dict and 'epe' in result_dict['disp']:
+                            epe_score = result_dict['disp']['epe']
+                        elif 'epe' in result_dict:
+                            epe_score = result_dict['epe']
+                        else:
+                            epe_score = None
+                            
+                        if epe_score is not None and epe_score < best_epe:
+                            best_epe = epe_score
+                            logger.info(f"New best validation EPE: {best_epe:.4f}. Saving best checkpoint.")
+                            torch.save({
+                                'model': model_without_ddp.state_dict(),
+                                'model_config': export_model_config(cfg),
+                                'step': total_steps,
+                                'epoch': epoch,
+                                'epe': best_epe
+                            }, best_checkpoint_path)
+                            has_new_best = True
+                    except Exception as e:
+                        logger.warning(f"Error checking/saving best validation checkpoint: {e}")
 
                 model.train()
 
@@ -360,6 +451,11 @@ def main(args):
                 return
         
         epoch += 1
+    finally:
+        if comm.is_main_process():
+            if os.path.exists(best_checkpoint_path):
+                logger.info("Shutdown / finish detected. Uploading best checkpoint to cloud...")
+                upload_checkpoint_to_r2(best_checkpoint_path, cloud_best_name)
 
 
 if __name__ == '__main__':
