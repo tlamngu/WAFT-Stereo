@@ -114,12 +114,24 @@ datasets/KITTI/
 ```
 
 ### SceneFlow
-Expects finalpass/cleanpass files and PFM disparity maps:
+The SceneFlow dataset consists of three subsets: `FlyingThings3D`, `Monkaa`, and `driving`. The default `sceneflow` dataloader dynamically aggregates all three subsets for training. Ensure your folders are structured as follows:
+
 ```
 datasets/sceneflow/
 ├── FlyingThings3D/
 │   ├── frames_finalpass/
+│   │   └── TRAIN/ (containing left/right image folders)
 │   └── disparity/
+│       └── TRAIN/ (containing left/right disparity PFM folders)
 ├── Monkaa/
+│   ├── frames_finalpass/ (containing left/right image folders)
+│   └── disparity/ (containing left/right disparity PFM folders)
 └── driving/
+    ├── frames_finalpass/
+    │   └── [focal_length_param]/[scene_direction]/[scene_speed]/
+    │       ├── left/  (e.g., 15mm_focallength/scene_backwards/fast/left/*.png)
+    │       └── right/ (e.g., 15mm_focallength/scene_backwards/fast/right/*.png)
+    └── disparity/
+        └── [focal_length_param]/[scene_direction]/[scene_speed]/
+            └── left/  (e.g., 15mm_focallength/scene_backwards/fast/left/*.pfm)
 ```
