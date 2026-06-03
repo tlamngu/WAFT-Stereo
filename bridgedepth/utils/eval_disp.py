@@ -185,7 +185,8 @@ def inference_on_dataset(
                 total_eval_time = 0
 
             start_compute_time = time.perf_counter()
-            inputs = {k: v.to(torch.device("cuda")) for k, v in inputs.items()}
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
             # outputs = model(inputs, **kwargs)
             if hasattr(model, 'module'):
                 outputs = model.module.inference(inputs, size=cfg.DATASETS.CROP_SIZE)

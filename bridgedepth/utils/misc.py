@@ -56,7 +56,8 @@ class SmoothedValue(object):
         """
         if not comm.is_dist_avail_and_initialized():
             return
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device='cuda')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        t = torch.tensor([self.count, self.total], dtype=torch.float64, device=device)
         comm.synchronize()
         dist.all_reduce(t)
         t = t.to_list()

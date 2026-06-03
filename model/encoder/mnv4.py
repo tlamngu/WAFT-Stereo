@@ -54,7 +54,10 @@ class MNv4Encoder(nn.Module):
         self.out_c = [(int)(self.output_dim * (2 ** i)) for i in range(4)]
         self.output_dim = self.out_c[0]
 
-        if r is not None:
+        # Check if the backbone is a hybrid model (only hybrid models have attention layers suitable for LoRA)
+        is_hybrid = "hybrid" in model_name
+
+        if r is not None and is_hybrid:
             lora_config = LoraConfig(
                 r=r,
                 lora_alpha=alpha if alpha is not None else r * 2,
@@ -62,7 +65,12 @@ class MNv4Encoder(nn.Module):
             )
             self.encoder = get_peft_model(backbone, lora_config)
         else:
+            if r is not None and not is_hybrid:
+                print(f"WARNING: LoRA is not applicable to pure convolutional variant '{model_name}'. Freezing backbone parameters instead.")
             self.encoder = backbone
+            # Freeze backbone parameters
+            for param in self.encoder.parameters():
+                param.requires_grad = False
 
         self.fmap_proj     = MNv4ProjFeats(dims, self.out_c)
         self.fmap_upsample = UpsampleFeats(self.output_dim, self.out_c)

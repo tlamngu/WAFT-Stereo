@@ -214,21 +214,22 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def macs_profiler(model):
-    input = torch.randn(1, 3, 544, 960).cuda()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input = torch.randn(1, 3, 544, 960).to(device)
     sample = {
         "img1": input,
         "img2": input,
     }
     with torch.no_grad():
+        activities = [torch.profiler.ProfilerActivity.CPU]
+        if torch.cuda.is_available():
+            activities.append(torch.profiler.ProfilerActivity.CUDA)
         with torch.profiler.profile(
-            activities=[
-                torch.profiler.ProfilerActivity.CPU,
-                torch.profiler.ProfilerActivity.CUDA
-            ],
+            activities=activities,
             with_flops=True) as prof:
                 output = model(sample)
     
-    print(prof.key_averages(group_by_stack_n=5).table(sort_by='self_cuda_time_total', row_limit=5))
+    print(prof.key_averages(group_by_stack_n=5).table(sort_by='self_cuda_time_total' if torch.cuda.is_available() else 'self_cpu_time_total', row_limit=5))
     events = prof.events()
     forward_MACs = sum([int(evt.flops) for evt in events])
     print("forward MACs: ", forward_MACs / 2 / 1e9, "G")
@@ -237,15 +238,23 @@ def macs_profiler(model):
 
 def main(args):
     cfg = setup(args)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = WAFT(cfg)
-    model = model.to(torch.device("cuda"))
-    model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    model = model.to(device)
+    if device.type == "cuda":
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     if comm.get_world_size() > 1:
-        model = torch.nn.parallel.DistributedDataParallel(
-            model,
-            device_ids=[comm.get_local_rank()],
-            find_unused_parameters=True,
-        )
+        if device.type == "cuda":
+            model = torch.nn.parallel.DistributedDataParallel(
+                model,
+                device_ids=[comm.get_local_rank()],
+                find_unused_parameters=True,
+            )
+        else:
+            model = torch.nn.parallel.DistributedDataParallel(
+                model,
+                find_unused_parameters=True,
+            )
         model_without_ddp = model.module
     else:
         model_without_ddp = model
@@ -352,10 +361,12 @@ def main(args):
 
         header = 'Epoch: [{}]'.format(epoch)
         for i_batch, sample in enumerate(train_loader):
-            sample = {k: v.to(torch.device("cuda")) for k, v in sample.items()}
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            sample = {k: v.to(device) if hasattr(v, "to") else v for k, v in sample.items()}
 
             # use bf16 for mix-precision training
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.SOLVER.MIX_PRECISION):
+            autocast_enabled = cfg.SOLVER.MIX_PRECISION if device.type == "cuda" else False
+            with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
                 result_dict = model(sample)
                 loss_dict, metrics = criterion(result_dict, sample, log=True)
                 weight_dict = criterion.weight_dict
