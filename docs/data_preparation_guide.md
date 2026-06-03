@@ -22,7 +22,32 @@ WAFT-Stereo/
 
 ## 🏙️ 2. Sanpo-Synthetic & Sanpo-Real Preparation
 
-Because SANPO captures metric depth instead of pixel disparity, the loader converts depth maps dynamically. Ensure your files are structured exactly as shown below:
+The official SANPO dataset is hosted on Google Cloud Storage. Since the full dataset is roughly 6 TB, it is recommended to selectively download specific sessions.
+
+### 📥 How to Download the Dataset
+You need to install the Google Cloud CLI (`gcloud`) on your machine. Follow the [Official gcloud CLI Installation Guide](https://cloud.google.com/sdk/docs/install).
+
+Once installed, use the `gcloud storage cp` command to download specific session directories:
+
+1. **Download a Synthetic Session**:
+   ```bash
+   # Download a synthetic session folder (containing left, right, depth (.npz), and calib.json)
+   gcloud storage cp -r "gs://gresearch/sanpo_dataset/v0/synthetic/session_0001" datasets/sanpo_synthetic/
+   ```
+
+2. **Download a Real Session**:
+   ```bash
+   # Download a real session folder (containing left, right, depth_ml (.npz), and calib.json)
+   gcloud storage cp -r "gs://gresearch/sanpo_dataset/v0/real/session_1001" datasets/sanpo_real/
+   ```
+
+3. **Check/List Official Train/Test Splits**:
+   ```bash
+   gcloud storage ls gs://gresearch/sanpo_dataset/v0/synthetic/splits/
+   gcloud storage ls gs://gresearch/sanpo_dataset/v0/real/splits/
+   ```
+
+Because SANPO captures metric depth instead of pixel disparity, the loader converts depth maps dynamically. Our dataloader dynamically supports reading both standard `.npy` and compressed `.npz` NumPy depth formats. Ensure your downloaded files are structured exactly as shown below:
 
 ### Directory Layout
 ```

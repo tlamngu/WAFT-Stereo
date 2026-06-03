@@ -10,39 +10,39 @@ At a high level, WAFT-Stereo operates as an iterative stereo-matching pipeline t
 
 ```mermaid
 graph TD
-    subgraph Input
-        L[Left Image]
-        R[Right Image]
-    end
+  subgraph Input
+    L[Left Image]
+    R[Right Image]
+  end
 
-    subgraph Feature Encoder [DepthAnythingV2 / ViT]
-        direction TB
-        DA2[DAv2Encoder or DINOv3Encoder]
-        LoRA1[LoRA Fine-tuning]
-        DA2 --> LoRA1
-    end
+  subgraph FeatureEncoder[DepthAnythingV2 / ViT]
+    direction TB
+    DA2[DAv2Encoder or DINOv3Encoder]
+    LoRA1[LoRA Fine-tuning]
+    DA2 --> LoRA1
+  end
 
-    subgraph WAFT-Stereo Pipeline
-        direction TB
-        Init[Proposal Initializer]
-        Warp[Disparity Warping]
-        Iter[Iterative Refinement Task Loop]
-    end
+  subgraph WAFTStereoPipeline[WAFT-Stereo Pipeline]
+    direction TB
+    Init[Proposal Initializer]
+    Warp[Disparity Warping]
+    Iter[Iterative Refinement Task Loop]
+  end
 
-    subgraph ViT Iterative Decoders
-        direction TB
-        PropDec[Proposal Decoder: VitIter]
-        DeltaDec[Delta Decoder: VitIter]
-    end
+  subgraph ViTIterativeDecoders[ViT Iterative Decoders]
+    direction TB
+    PropDec[Proposal Decoder: VitIter]
+    DeltaDec[Delta Decoder: VitIter]
+  end
 
-    L --> Feature Encoder
-    R --> Feature Encoder
-    Feature Encoder -->|Left/Right Feature Maps| WAFT-Stereo Pipeline
-    WAFT-Stereo Pipeline -->|Feature Maps| PropDec
-    PropDec -->|Initial Disparity| Warp
-    Warp -->|Warped Features| DeltaDec
-    DeltaDec -->|Disparity Delta| Iter
-    Iter -->|Refined Disparity Output| Final[Final Predicted Disparity]
+  L --> DA2
+  R --> DA2
+  LoRA1 --> |Left/Right Feature Maps| Init
+  Init -->|Feature Maps| PropDec
+  PropDec -->|Initial Disparity| Warp
+  Warp -->|Warped Features| DeltaDec
+  DeltaDec -->|Disparity Delta| Iter
+  Iter -->|Refined Disparity Output| Final[Final Predicted Disparity]
 ```
 
 ---

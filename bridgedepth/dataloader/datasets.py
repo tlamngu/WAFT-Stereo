@@ -551,7 +551,7 @@ class SanpoSynthetic(StereoDataset):
         for session in sorted(glob.glob(os.path.join(root, 'session_*'))):
             lefts  = sorted(glob.glob(os.path.join(session, 'left',  '*.png')))
             rights = sorted(glob.glob(os.path.join(session, 'right', '*.png')))
-            depths = sorted(glob.glob(os.path.join(session, 'depth', '*.npy')))
+            depths = sorted(glob.glob(os.path.join(session, 'depth', '*.npy')) + glob.glob(os.path.join(session, 'depth', '*.npz')))
             calib  = os.path.join(session, 'calib.json')
             assert os.path.exists(calib), f"Missing calib: {calib}"
             for l, r, d in zip(lefts, rights, depths):
@@ -561,7 +561,11 @@ class SanpoSynthetic(StereoDataset):
     @staticmethod
     def _read_sanpo_depth(path_pair):
         depth_path, calib_path = path_pair
-        depth = np.load(depth_path).astype(np.float32)
+        if depth_path.endswith('.npz'):
+            with np.load(depth_path) as data:
+                depth = data[data.files[0]].astype(np.float32)
+        else:
+            depth = np.load(depth_path).astype(np.float32)
         with open(calib_path) as f:
             calib = json.load(f)
         depth = np.clip(depth, 0.1, 100.0)
@@ -575,7 +579,7 @@ class SanpoReal(StereoDataset):
         for session in sorted(glob.glob(os.path.join(root, 'session_*'))):
             lefts  = sorted(glob.glob(os.path.join(session, 'left',     '*.png')))
             rights = sorted(glob.glob(os.path.join(session, 'right',    '*.png')))
-            depths = sorted(glob.glob(os.path.join(session, 'depth_ml', '*.npy')))
+            depths = sorted(glob.glob(os.path.join(session, 'depth_ml', '*.npy')) + glob.glob(os.path.join(session, 'depth_ml', '*.npz')))
             calib  = os.path.join(session, 'calib.json')
             for l, r, d in zip(lefts, rights, depths):
                 self.image_list.append([l, r])
@@ -584,7 +588,11 @@ class SanpoReal(StereoDataset):
     @staticmethod
     def _read_sanpo_depth(path_pair):
         depth_path, calib_path = path_pair
-        depth = np.load(depth_path).astype(np.float32)
+        if depth_path.endswith('.npz'):
+            with np.load(depth_path) as data:
+                depth = data[data.files[0]].astype(np.float32)
+        else:
+            depth = np.load(depth_path).astype(np.float32)
         with open(calib_path) as f:
             calib = json.load(f)
         valid = depth > 0.1
