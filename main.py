@@ -4,9 +4,40 @@ import argparse
 import sys
 import json
 import wandb
+import dotenv
 
 import torch
 import copy
+
+# Load R2 credentials from .env
+dotenv.load_dotenv()
+
+def upload_checkpoint_to_r2(local_path, cloud_name):
+    import os
+    import boto3
+    
+    access_key = os.getenv("CF_R2_ACCESS_KEY_ID")
+    secret_key = os.getenv("CF_R2_SECRET_ACCESS_KEY")
+    endpoint = os.getenv("CF_R2_ENDPOINT_URL")
+    bucket_name = os.getenv("CF_R2_BUCKET_NAME")
+    
+    if not all([access_key, secret_key, endpoint, bucket_name]) or "your_" in access_key:
+        print("Cloudflare R2 credentials are not configured in .env. Skipping cloud upload.")
+        return
+    
+    try:
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            endpoint_url=endpoint
+        )
+        print(f"Uploading {local_path} to R2 bucket {bucket_name} as {cloud_name}...")
+        s3.upload_file(local_path, bucket_name, cloud_name)
+        print("Upload completed successfully!")
+    except Exception as e:
+        print(f"Failed to upload checkpoint to R2: {e}")
+
 
 from algorithms.waft import WAFT
 from bridgedepth.config import export_model_config
@@ -301,6 +332,7 @@ def main(args):
                         'model': model_without_ddp.state_dict(),
                         'model_config': export_model_config(cfg),
                     }, checkpoint_path)
+                    upload_checkpoint_to_r2(checkpoint_path, 'step_%06d.pth' % total_steps)
 
             if total_steps % cfg.SOLVER.LATEST_CHECKPOINT_PERIOD == 0:
                 checkpoint_path = os.path.join(args.checkpoint_dir, 'checkpoint_latest.pth')
@@ -312,6 +344,7 @@ def main(args):
                         'step': total_steps,
                         'epoch': epoch,
                     }, checkpoint_path)
+                    upload_checkpoint_to_r2(checkpoint_path, 'checkpoint_latest.pth')
 
             if cfg.TEST.EVAL_PERIOD > 0 and total_steps % cfg.TEST.EVAL_PERIOD == 0:
                 logger.info('Start validation')

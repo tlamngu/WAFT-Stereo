@@ -1,0 +1,33 @@
+WAFT:
+  FEATURE_ENCODER:
+    TYPE: "mnv4"
+    ARCH: "mobilenetv4_conv_medium"
+    LORA_RANK: 8
+    LORA_ALPHA: 16
+  ITERATIVE_MODULE:
+    TASK: ['delta', 'delta', 'delta', 'delta']
+    PROP_ITER:
+      TYPE: "mnv4"
+      HIDDEN_DIM: 128
+      NUM_UIB_BLOCKS: 4
+      RES_LAYERS: 4
+    DELTA_ITER:
+      TYPE: "mnv4"
+      HIDDEN_DIM: 128
+      NUM_UIB_BLOCKS: 4
+      RES_LAYERS: 4
+  MAX_DISP: 800
+  LOSS: ['mixlap_40']
+
+DATASETS:
+  TRAIN: ("sanpo_real",)
+  MUL: (1,)
+  CROP_SIZE: [320, 240]
+  TEST: ("things",)
+
+SOLVER:
+  RESUME: "checkpoints/stage1_sanpo_synthetic_final.pth"
+  BASE_LR: 5.0e-5
+  IMS_PER_BATCH: 4
+  MAX_ITER: 20000
+  CHECKPOINT_PERIOD: 5000

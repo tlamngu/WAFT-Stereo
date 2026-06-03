@@ -541,6 +541,58 @@ class WMGStereo(StereoDataset):
         left_disparity_pattern = str(root / split / "*/*/*/disparity/camera_0/*.npy")
         self.disparity_list = self._scan_pairs(left_disparity_pattern, None)
 
+import json
+import glob
+
+class SanpoSynthetic(StereoDataset):
+    def __init__(self, aug_params=None, root='datasets/sanpo_synthetic'):
+        super().__init__(aug_params, sparse=False, reader=self._read_sanpo_depth)
+        assert os.path.exists(root), f"Dataset root not found: {root}"
+        for session in sorted(glob.glob(os.path.join(root, 'session_*'))):
+            lefts  = sorted(glob.glob(os.path.join(session, 'left',  '*.png')))
+            rights = sorted(glob.glob(os.path.join(session, 'right', '*.png')))
+            depths = sorted(glob.glob(os.path.join(session, 'depth', '*.npy')))
+            calib  = os.path.join(session, 'calib.json')
+            assert os.path.exists(calib), f"Missing calib: {calib}"
+            for l, r, d in zip(lefts, rights, depths):
+                self.image_list.append([l, r])
+                self.disparity_list.append([d, calib])
+
+    @staticmethod
+    def _read_sanpo_depth(path_pair):
+        depth_path, calib_path = path_pair
+        depth = np.load(depth_path).astype(np.float32)
+        with open(calib_path) as f:
+            calib = json.load(f)
+        depth = np.clip(depth, 0.1, 100.0)
+        return (calib['focal_length_px'] * calib['baseline_m']) / depth
+
+
+class SanpoReal(StereoDataset):
+    def __init__(self, aug_params=None, root='datasets/sanpo_real'):
+        super().__init__(aug_params, sparse=False, reader=self._read_sanpo_depth)
+        assert os.path.exists(root), f"Dataset root not found: {root}"
+        for session in sorted(glob.glob(os.path.join(root, 'session_*'))):
+            lefts  = sorted(glob.glob(os.path.join(session, 'left',     '*.png')))
+            rights = sorted(glob.glob(os.path.join(session, 'right',    '*.png')))
+            depths = sorted(glob.glob(os.path.join(session, 'depth_ml', '*.npy')))
+            calib  = os.path.join(session, 'calib.json')
+            for l, r, d in zip(lefts, rights, depths):
+                self.image_list.append([l, r])
+                self.disparity_list.append([d, calib])
+
+    @staticmethod
+    def _read_sanpo_depth(path_pair):
+        depth_path, calib_path = path_pair
+        depth = np.load(depth_path).astype(np.float32)
+        with open(calib_path) as f:
+            calib = json.load(f)
+        valid = depth > 0.1
+        disparity = np.zeros_like(depth)
+        disparity[valid] = (calib['focal_length_px'] * calib['baseline_m']) / depth[valid]
+        return disparity
+
+
 def build_train_loader(cfg):
     """ Create the data loader for the corresponding training set """
     crop_size = cfg.DATASETS.CROP_SIZE
@@ -615,6 +667,12 @@ def build_train_loader(cfg):
         elif dataset_name == 'wmgstereo':
             new_dataset = WMGStereo(aug_params)
             logger.info(f"{len(new_dataset)} samples from WMGStereo")
+        elif dataset_name == 'sanpo_synthetic':
+            new_dataset = SanpoSynthetic(aug_params)
+            logger.info(f"{len(new_dataset)} samples from SanpoSynthetic")
+        elif dataset_name == 'sanpo_real':
+            new_dataset = SanpoReal(aug_params)
+            logger.info(f"{len(new_dataset)} samples from SanpoReal")
         else:
             raise ValueError(f"Unrecognized dataset {dataset_name}")
         if mul > 0:
