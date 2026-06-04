@@ -506,7 +506,10 @@ class TartanGround(StereoDataset):
             if glob(left_img_pattern):
                 right_img_pattern = str(root / scene / f"*/*/image_rcam_{cam}/*.png")
                 self.image_list += self._scan_pairs(left_img_pattern, right_img_pattern)
-                left_disparity_pattern = str(root / scene / f"*/*/depth_lcam_{cam}/*.png")
+                
+                left_disparity_pattern = str(root / scene / f"*/*/depth_lcam_{cam}/*.npy")
+                if not glob(left_disparity_pattern):
+                    left_disparity_pattern = str(root / scene / f"*/*/depth_lcam_{cam}/*.png")
                 self.disparity_list += self._scan_pairs(left_disparity_pattern, None)
         
         negative = ['back']
@@ -515,7 +518,10 @@ class TartanGround(StereoDataset):
             if glob(left_img_pattern):
                 right_img_pattern = str(root / scene / f"*/*/image_lcam_{cam}/*.png")
                 self.image_list += self._scan_pairs(left_img_pattern, right_img_pattern)
-                left_disparity_pattern = str(root / scene / f"*/*/depth_rcam_{cam}/*.png")
+                
+                left_disparity_pattern = str(root / scene / f"*/*/depth_rcam_{cam}/*.npy")
+                if not glob(left_disparity_pattern):
+                    left_disparity_pattern = str(root / scene / f"*/*/depth_rcam_{cam}/*.png")
                 self.disparity_list += self._scan_pairs(left_disparity_pattern, None)
 
 class UnrealStereo4K(StereoDataset):

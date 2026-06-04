@@ -209,9 +209,12 @@ def readDispSpring(file_name):
     return disp, valid
 
 def readDispTartanGround(file_name):
-    depth_rgba = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
-    depth = depth_rgba.view("<f4")
-    depth = np.squeeze(depth, axis=-1)
+    if file_name.endswith('.npy'):
+        depth = np.load(file_name)
+    else:
+        depth_rgba = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
+        depth = depth_rgba.view("<f4")
+        depth = np.squeeze(depth, axis=-1)
     disp = 80.0 / (depth + 1e-6)
     valid = disp > 0
     return disp, valid
