@@ -1,0 +1,32 @@
+WAFT:
+  FEATURE_ENCODER:
+    TYPE: "mnv4"
+    ARCH: "mobilenetv4_conv_small"
+    LORA_RANK: null
+    LORA_ALPHA: null
+  ITERATIVE_MODULE:
+    TASK: ['delta', 'delta', 'delta', 'delta']
+    PROP_ITER:
+      TYPE: "mnv4"
+      HIDDEN_DIM: 64
+      NUM_UIB_BLOCKS: 2
+      RES_LAYERS: 2
+    DELTA_ITER:
+      TYPE: "mnv4"
+      HIDDEN_DIM: 64
+      NUM_UIB_BLOCKS: 2
+      RES_LAYERS: 2
+  MAX_DISP: 800
+  LOSS: ['mixlap_40']
+
+DATASETS:
+  TRAIN: ("tartanground", "tartanair")
+  MUL: (1, 1)
+  CROP_SIZE: [320, 240]
+  TEST: ("sanpo_real_val",)
+
+SOLVER:
+  BASE_LR: 1.0e-4
+  IMS_PER_BATCH: 4
+  MAX_ITER: 50000
+  CHECKPOINT_PERIOD: 5000

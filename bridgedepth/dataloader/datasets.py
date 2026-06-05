@@ -551,17 +551,32 @@ import json
 
 
 class SanpoReal(StereoDataset):
-    def __init__(self, aug_params=None, root='datasets/sanpo_real'):
+    def __init__(self, aug_params=None, root='datasets/sanpo_real', split='all'):
         super().__init__(aug_params, sparse=False, reader=self._read_sanpo_depth)
         assert os.path.exists(root), f"Dataset root not found: {root}"
+        
+        all_samples = []
         for session in sorted(glob(os.path.join(root, 'session_*'))):
             lefts  = sorted(glob(os.path.join(session, 'left',     '*.png')))
             rights = sorted(glob(os.path.join(session, 'right',    '*.png')))
             depths = sorted(glob(os.path.join(session, 'depth_ml', '*.npy')) + glob(os.path.join(session, 'depth_ml', '*.npz')))
             calib  = os.path.join(session, 'calib.json')
             for l, r, d in zip(lefts, rights, depths):
-                self.image_list.append([l, r])
-                self.disparity_list.append([d, calib])
+                all_samples.append(([l, r], [d, calib]))
+                
+        num_samples = len(all_samples)
+        split_idx = int(num_samples * 0.8)
+        
+        if split == 'train':
+            selected_samples = all_samples[:split_idx]
+        elif split in ['val', 'eval', 'test']:
+            selected_samples = all_samples[split_idx:]
+        else:
+            selected_samples = all_samples
+            
+        for imgs, disps in selected_samples:
+            self.image_list.append(imgs)
+            self.disparity_list.append(disps)
 
     @staticmethod
     def _read_sanpo_depth(path_pair):
@@ -654,9 +669,13 @@ def build_train_loader(cfg):
             new_dataset = WMGStereo(aug_params)
             logger.info(f"{len(new_dataset)} samples from WMGStereo")
 
-        elif dataset_name == 'sanpo_real':
-            new_dataset = SanpoReal(aug_params)
-            logger.info(f"{len(new_dataset)} samples from SanpoReal")
+        elif dataset_name == 'sanpo_real' or dataset_name == 'sanpo_real_train':
+            split = 'train' if dataset_name == 'sanpo_real_train' else 'all'
+            new_dataset = SanpoReal(aug_params, split=split)
+            logger.info(f"{len(new_dataset)} samples from SanpoReal ({split})")
+        elif dataset_name == 'sanpo_real_val' or dataset_name == 'sanpo_real_eval':
+            new_dataset = SanpoReal(aug_params, split='val')
+            logger.info(f"{len(new_dataset)} samples from SanpoReal (val)")
         else:
             raise ValueError(f"Unrecognized dataset {dataset_name}")
         if mul > 0:
@@ -716,6 +735,9 @@ def build_val_loader(cfg, dataset_name):
         logger.info('Number of validation image pairs: %d' % len(val_dataset))
     elif dataset_name == 'booster':
         val_dataset = Booster(resolution='Q')
+        logger.info('Number of validation image pairs: %d' % len(val_dataset))
+    elif dataset_name in ['sanpo_real', 'sanpo_real_val', 'sanpo_real_eval']:
+        val_dataset = SanpoReal(split='val')
         logger.info('Number of validation image pairs: %d' % len(val_dataset))
 
     world_size = comm.get_world_size()

@@ -1,0 +1,33 @@
+WAFT:
+  FEATURE_ENCODER:
+    TYPE: "mnv4"
+    ARCH: "mobilenetv4_conv_small"
+    LORA_RANK: 8
+    LORA_ALPHA: 16
+  ITERATIVE_MODULE:
+    TASK: ['delta', 'delta', 'delta', 'delta']
+    PROP_ITER:
+      TYPE: "mnv4"
+      HIDDEN_DIM: 64
+      NUM_UIB_BLOCKS: 2
+      RES_LAYERS: 2
+    DELTA_ITER:
+      TYPE: "mnv4"
+      HIDDEN_DIM: 64
+      NUM_UIB_BLOCKS: 2
+      RES_LAYERS: 2
+  MAX_DISP: 800
+  LOSS: ['mixlap_40']
+
+DATASETS:
+  TRAIN: ("sanpo_real_train",)
+  MUL: (1,)
+  CROP_SIZE: [320, 240]
+  TEST: ("sanpo_real_val",)
+
+SOLVER:
+  RESUME: "checkpoints/stage1-tartan-small/checkpoint_best.pth"
+  BASE_LR: 5.0e-5
+  IMS_PER_BATCH: 4
+  MAX_ITER: 20000
+  CHECKPOINT_PERIOD: 5000
